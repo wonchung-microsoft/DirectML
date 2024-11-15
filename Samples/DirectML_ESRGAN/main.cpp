@@ -135,13 +135,37 @@ int main(int argc, char** argv)
             ("a,adapter", "Adapter name substring filter", cxxopts::value<std::string>()->default_value(""));
 
         auto commandLineArgs = commandLineParams.parse(argc, argv);
+        std::string adapter = commandLineArgs["adapter"].as<std::string>();
 
-        // See helpers.h for logic to select a DXCore adapter, create DML device, and create D3D command queue.
-        auto [dmlDevice, commandQueue] = CreateDmlDeviceAndCommandQueue(commandLineArgs["adapter"].as<std::string>());
+        // Check if adapter param is empty. If so, try "NPU" first then try "GPU" too.
+        if (adapter.empty())
+        {
+            try
+            {
+                adapter = "NPU"; // First try with NPU
+                auto [dmlDevice, commandQueue] = CreateDmlDeviceAndCommandQueue(adapter);
+                RunModel(
+                    dmlDevice.Get(),
+                    commandQueue.Get(),
+                    commandLineArgs["model"].as<std::string>(),
+                    commandLineArgs["image"].as<std::string>()
+                );
+                return 0; // Exit if successful
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Error: " << e.what() << std::endl;
+                std::cout << "Retrying on GPU..." << std::endl;
+                // If NPU fails, fallback to GPU
+                adapter = "GPU";
+            }
+        }
 
+        // Final attempt with the specified or fallback adapter
+        auto [dmlDevice, commandQueue] = CreateDmlDeviceAndCommandQueue(adapter);
         RunModel(
-            dmlDevice.Get(), 
-            commandQueue.Get(), 
+            dmlDevice.Get(),
+            commandQueue.Get(),
             commandLineArgs["model"].as<std::string>(),
             commandLineArgs["image"].as<std::string>()
         );
